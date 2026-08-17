@@ -1,0 +1,855 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model admin {
+  user_id        String           @id(map: "admin_new_pkey") @db.Uuid
+  role_id        String           @db.Uuid
+  status         String           @default("active") @db.VarChar(20)
+  last_login_at  DateTime?        @db.Timestamptz(6)
+  admin_role     admin_role       @relation(fields: [role_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "admin_new_role_id_fkey")
+  app_user       app_user         @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "admin_new_user_id_fkey")
+  auth_session   auth_session[]
+  password_reset password_reset[]
+  refund         refund[]
+  support_ticket support_ticket[]
+
+  @@index([role_id], map: "idx_admin_new_role")
+}
+
+model admin_role {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String  @unique @db.VarChar(50)
+  permissions String
+  description String?
+  admin       admin[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model app_user {
+  id                                                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                                                  String                    @db.VarChar(120)
+  email                                                 String                    @unique @db.VarChar(255)
+  phone                                                 String                    @unique @db.VarChar(20)
+  password_hash                                         String                    @db.VarChar(255)
+  role                                                  String                    @db.VarChar(20)
+  status                                                String                    @default("pending_verification") @db.VarChar(30)
+  home_city_id                                          String?                   @db.Uuid
+  profile_photo_url                                     String?
+  date_of_birth                                         DateTime?                 @db.Date
+  gender                                                String?                   @db.VarChar(20)
+  is_email_verified                                     Boolean                   @default(false)
+  is_phone_verified                                     Boolean                   @default(false)
+  created_at                                            DateTime                  @default(now()) @db.Timestamptz(6)
+  last_login_at                                         DateTime?                 @db.Timestamptz(6)
+  admin                                                 admin?
+  city                                                  city?                     @relation(fields: [home_city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  auth_session                                          auth_session[]
+  chat_message                                          chat_message[]
+  driver                                                driver?
+  emergency_contact                                     emergency_contact[]
+  notification                                          notification[]
+  notification_preference                               notification_preference[]
+  parcel_delivery_parcel_delivery_receiver_idToapp_user parcel_delivery[]         @relation("parcel_delivery_receiver_idToapp_user")
+  parcel_delivery_parcel_delivery_sender_idToapp_user   parcel_delivery[]         @relation("parcel_delivery_sender_idToapp_user")
+  password_reset                                        password_reset[]
+  payment_method                                        payment_method[]
+  rating_rating_ratee_idToapp_user                      rating[]                  @relation("rating_ratee_idToapp_user")
+  rating_rating_rater_idToapp_user                      rating[]                  @relation("rating_rater_idToapp_user")
+  rider                                                 rider?
+  saved_place                                           saved_place[]
+  sos_event                                             sos_event[]
+  support_ticket                                        support_ticket[]
+  verification_code                                     verification_code[]
+  wallet                                                wallet?
+
+  @@index([home_city_id], map: "idx_user_home_city")
+  @@index([role], map: "idx_user_role")
+  @@index([status], map: "idx_user_status")
+}
+
+model audit_log {
+  id          BigInt   @id @default(autoincrement())
+  actor_id    String?  @db.Uuid
+  actor_type  String   @db.VarChar(20)
+  action      String   @db.VarChar(80)
+  entity_type String?  @db.VarChar(50)
+  entity_id   String?  @db.Uuid
+  ip_address  String?  @db.VarChar(45)
+  diff        String?
+  ts          DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([actor_id, ts(sort: Desc)], map: "idx_audit_actor")
+  @@index([entity_type, entity_id], map: "idx_audit_entity")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model auth_session {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String?   @db.Uuid
+  admin_id           String?   @db.Uuid
+  refresh_token_hash String    @unique @db.VarChar(255)
+  ip_address         String?   @db.VarChar(45)
+  user_agent         String?
+  device_id          String?   @db.VarChar(120)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at         DateTime  @db.Timestamptz(6)
+  revoked_at         DateTime? @db.Timestamptz(6)
+  admin              admin?    @relation(fields: [admin_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user           app_user? @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([admin_id], map: "idx_session_admin")
+  @@index([user_id], map: "idx_session_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model chat_message {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id     String    @db.Uuid
+  sender_id   String    @db.Uuid
+  sender_role String    @db.VarChar(10)
+  message     String
+  is_read     Boolean   @default(false)
+  sent_at     DateTime  @default(now()) @db.Timestamptz(6)
+  read_at     DateTime? @db.Timestamptz(6)
+  ride        ride      @relation(fields: [ride_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  app_user    app_user  @relation(fields: [sender_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ride_id, sent_at], map: "idx_chat_ride")
+}
+
+model city {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  country_id        String              @db.Uuid
+  name              String              @db.VarChar(120)
+  timezone          String              @db.VarChar(50)
+  center_lat        Float?
+  center_lng        Float?
+  is_active         Boolean             @default(true)
+  app_user          app_user[]
+  country           country             @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver            driver[]
+  fare_estimate     fare_estimate[]
+  incentive_program incentive_program[]
+  parcel_delivery   parcel_delivery[]
+  ride              ride[]
+  ride_tracking     ride_tracking[]
+  rider             rider[]
+  saved_place       saved_place[]
+  sos_event         sos_event[]
+  vehicle           vehicle[]
+  zone              zone[]
+
+  @@index([country_id], map: "idx_city_country")
+}
+
+model country {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String                @db.VarChar(100)
+  iso_code            String                @unique @db.Char(2)
+  currency            String                @db.Char(3)
+  phone_prefix        String                @db.VarChar(5)
+  center_lat          Float?
+  center_lng          Float?
+  is_active           Boolean               @default(true)
+  city                city[]
+  driver_bank_account driver_bank_account[]
+  parcel_delivery     parcel_delivery[]
+  ride                ride[]
+  ride_tracking       ride_tracking[]
+  rider               rider[]
+  saved_place         saved_place[]
+  sos_event           sos_event[]
+  zone                zone[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model driver {
+  user_id                                   String                @id @db.Uuid
+  license_number                            String                @unique @db.VarChar(50)
+  license_expiry                            DateTime              @db.Date
+  kyc_status                                String                @default("not_started") @db.VarChar(20)
+  rating_avg                                Decimal?              @default(5.00) @db.Decimal(3, 2)
+  total_rides                               Int                   @default(0)
+  online_status                             String                @default("offline") @db.VarChar(20)
+  active_vehicle_id                         String?               @db.Uuid
+  current_city_id                           String?               @db.Uuid
+  last_known_lat                            Float?
+  last_known_lng                            Float?
+  last_known_ts                             DateTime?             @db.Timestamptz(6)
+  lifetime_earnings                         Decimal               @default(0) @db.Decimal(14, 2)
+  current_balance                           Decimal               @default(0) @db.Decimal(14, 2)
+  vehicle_driver_active_vehicle_idTovehicle vehicle?              @relation("driver_active_vehicle_idTovehicle", fields: [active_vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "driver_active_vehicle_fk")
+  city                                      city?                 @relation(fields: [current_city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user                                  app_user              @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  driver_bank_account                       driver_bank_account[]
+  driver_document                           driver_document[]
+  driver_incentive                          driver_incentive[]
+  driver_payout                             driver_payout[]
+  parcel_delivery                           parcel_delivery[]
+  parcel_tracking                           parcel_tracking[]
+  ride                                      ride[]
+  ride_dispatch                             ride_dispatch[]
+  ride_tracking                             ride_tracking[]
+  tip                                       tip[]
+  vehicle_vehicle_driver_idTodriver         vehicle[]             @relation("vehicle_driver_idTodriver")
+
+  @@index([current_city_id], map: "idx_driver_current_city")
+  @@index([kyc_status], map: "idx_driver_kyc")
+  @@index([online_status], map: "idx_driver_online")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model driver_bank_account {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driver_id             String          @db.Uuid
+  country_id            String          @db.Uuid
+  account_holder_name   String          @db.VarChar(120)
+  bank_name             String          @db.VarChar(120)
+  account_number_masked String          @db.VarChar(30)
+  gateway_token         String?         @db.VarChar(255)
+  status                String          @default("pending_verification") @db.VarChar(30)
+  is_default            Boolean         @default(false)
+  verified_at           DateTime?       @db.Timestamptz(6)
+  added_at              DateTime        @default(now()) @db.Timestamptz(6)
+  country               country         @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver                driver          @relation(fields: [driver_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  driver_payout         driver_payout[]
+
+  @@index([driver_id], map: "idx_bank_driver")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model driver_document {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driver_id           String    @db.Uuid
+  doc_type            String    @db.VarChar(50)
+  url                 String
+  verification_status String    @default("pending") @db.VarChar(20)
+  rejection_reason    String?
+  expires_at          DateTime? @db.Date
+  uploaded_at         DateTime  @default(now()) @db.Timestamptz(6)
+  reviewed_at         DateTime? @db.Timestamptz(6)
+  driver              driver    @relation(fields: [driver_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([driver_id], map: "idx_ddoc_driver")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model driver_incentive {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driver_id         String            @db.Uuid
+  program_id        String            @db.Uuid
+  progress_rides    Int               @default(0)
+  progress_hours    Int               @default(0)
+  bonus_earned      Decimal           @default(0) @db.Decimal(10, 2)
+  status            String            @default("active") @db.VarChar(20)
+  period            DateTime          @db.Date
+  last_updated_at   DateTime          @default(now()) @db.Timestamptz(6)
+  driver            driver            @relation(fields: [driver_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  incentive_program incentive_program @relation(fields: [program_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([driver_id, program_id, period])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model driver_payout {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driver_id           String              @db.Uuid
+  bank_account_id     String              @db.Uuid
+  amount              Decimal             @db.Decimal(14, 2)
+  currency            String              @default("USD") @db.Char(3)
+  status              String              @default("pending") @db.VarChar(20)
+  gateway_ref         String?             @db.VarChar(255)
+  period_start        DateTime            @db.Date
+  period_end          DateTime            @db.Date
+  initiated_at        DateTime            @default(now()) @db.Timestamptz(6)
+  paid_at             DateTime?           @db.Timestamptz(6)
+  driver_bank_account driver_bank_account @relation(fields: [bank_account_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver              driver              @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([driver_id], map: "idx_payout_driver")
+}
+
+model emergency_contact {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id  String   @db.Uuid
+  name     String   @db.VarChar(120)
+  phone    String   @db.VarChar(20)
+  relation String?  @db.VarChar(30)
+  priority Int      @default(1)
+  app_user app_user @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_ec_user")
+}
+
+model fare_estimate {
+  id                         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rider_id                   String       @db.Uuid
+  vehicle_type_id            String       @db.Uuid
+  city_id                    String?      @db.Uuid
+  pickup_lat                 Float
+  pickup_lng                 Float
+  dropoff_lat                Float
+  dropoff_lng                Float
+  estimated_min              Decimal      @db.Decimal(10, 2)
+  estimated_max              Decimal      @db.Decimal(10, 2)
+  surge_multiplier           Decimal      @default(1.00) @db.Decimal(4, 2)
+  estimated_duration_seconds Int?
+  estimated_distance_km      Decimal?     @db.Decimal(8, 2)
+  created_at                 DateTime     @default(now()) @db.Timestamptz(6)
+  expires_at                 DateTime     @db.Timestamptz(6)
+  city                       city?        @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rider                      rider        @relation(fields: [rider_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  vehicle_type               vehicle_type @relation(fields: [vehicle_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride                       ride[]
+
+  @@index([rider_id], map: "idx_estimate_rider")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model incentive_program {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  city_id          String?            @db.Uuid
+  name             String             @db.VarChar(120)
+  description      String?
+  target_rides     Int?
+  target_hours     Int?
+  bonus_amount     Decimal            @db.Decimal(10, 2)
+  starts_on        DateTime           @db.Date
+  ends_on          DateTime           @db.Date
+  is_active        Boolean            @default(true)
+  driver_incentive driver_incentive[]
+  city             city?              @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notification {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  channel      String    @db.VarChar(20)
+  template_key String    @db.VarChar(80)
+  title        String?   @db.VarChar(255)
+  body         String?
+  status       String    @default("pending") @db.VarChar(20)
+  error_reason String?
+  sent_at      DateTime? @db.Timestamptz(6)
+  read_at      DateTime? @db.Timestamptz(6)
+  app_user     app_user  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([status], map: "idx_notif_status")
+  @@index([user_id], map: "idx_notif_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notification_preference {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id  String   @db.Uuid
+  channel  String   @db.VarChar(20)
+  category String   @db.VarChar(30)
+  enabled  Boolean  @default(true)
+  app_user app_user @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([user_id, channel, category])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model parcel_delivery {
+  id                                             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sender_id                                      String                 @db.Uuid
+  receiver_id                                    String?                @db.Uuid
+  receiver_name                                  String                 @db.VarChar(120)
+  receiver_phone                                 String                 @db.VarChar(20)
+  driver_id                                      String?                @db.Uuid
+  vehicle_id                                     String?                @db.Uuid
+  city_id                                        String?                @db.Uuid
+  country_id                                     String?                @db.Uuid
+  pickup_address                                 String
+  dropoff_address                                String
+  pickup_lat                                     Float
+  pickup_lng                                     Float
+  dropoff_lat                                    Float
+  dropoff_lng                                    Float
+  package_size                                   String                 @db.VarChar(20)
+  package_description                            String?
+  status                                         String                 @default("requested") @db.VarChar(20)
+  delivery_fee                                   Decimal?               @db.Decimal(10, 2)
+  requested_at                                   DateTime               @default(now()) @db.Timestamptz(6)
+  matched_at                                     DateTime?              @db.Timestamptz(6)
+  picked_up_at                                   DateTime?              @db.Timestamptz(6)
+  delivered_at                                   DateTime?              @db.Timestamptz(6)
+  city                                           city?                  @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country                                        country?               @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver                                         driver?                @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_parcel_delivery_receiver_idToapp_user app_user?              @relation("parcel_delivery_receiver_idToapp_user", fields: [receiver_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_parcel_delivery_sender_idToapp_user   app_user               @relation("parcel_delivery_sender_idToapp_user", fields: [sender_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehicle                                        vehicle?               @relation(fields: [vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parcel_delivery_proof                          parcel_delivery_proof?
+  parcel_tracking                                parcel_tracking[]
+  payment                                        payment?
+
+  @@index([city_id], map: "idx_parcel_city")
+  @@index([driver_id], map: "idx_parcel_driver")
+  @@index([sender_id], map: "idx_parcel_sender")
+  @@index([status], map: "idx_parcel_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model parcel_delivery_proof {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parcel_id       String          @unique @db.Uuid
+  proof_type      String          @db.VarChar(20)
+  photo_url       String?
+  signature_url   String?
+  otp_code        String?         @db.VarChar(10)
+  confirmed_by    String          @db.VarChar(20)
+  confirmed_at    DateTime        @default(now()) @db.Timestamptz(6)
+  parcel_delivery parcel_delivery @relation(fields: [parcel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([parcel_id], map: "idx_proof_parcel")
+}
+
+model parcel_tracking {
+  id              BigInt          @id @default(autoincrement())
+  parcel_id       String          @db.Uuid
+  driver_id       String          @db.Uuid
+  lat             Float
+  lng             Float
+  speed           Float?          @db.Real
+  ts              DateTime        @default(now()) @db.Timestamptz(6)
+  driver          driver          @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  parcel_delivery parcel_delivery @relation(fields: [parcel_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([parcel_id, ts], map: "idx_parcel_tracking_parcel")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model password_reset {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String?   @db.Uuid
+  admin_id   String?   @db.Uuid
+  token_hash String    @unique @db.VarChar(255)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at DateTime  @db.Timestamptz(6)
+  used_at    DateTime? @db.Timestamptz(6)
+  admin      admin?    @relation(fields: [admin_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  app_user   app_user? @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id             String?               @unique @db.Uuid
+  payment_method_id   String?               @db.Uuid
+  amount              Decimal               @db.Decimal(10, 2)
+  currency            String                @default("USD") @db.Char(3)
+  status              String                @default("pending") @db.VarChar(20)
+  authorized_at       DateTime?             @db.Timestamptz(6)
+  captured_at         DateTime?             @db.Timestamptz(6)
+  parcel_id           String?               @unique @db.Uuid
+  parcel_delivery     parcel_delivery?      @relation(fields: [parcel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_method      payment_method?       @relation(fields: [payment_method_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride                ride?                 @relation(fields: [ride_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_transaction payment_transaction[]
+  refund              refund[]
+
+  @@index([status], map: "idx_payment_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_method {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @db.Uuid
+  type             String    @db.VarChar(20)
+  gateway_provider String?   @db.VarChar(50)
+  gateway_token    String?   @db.VarChar(255)
+  brand            String?   @db.VarChar(30)
+  last4            String?   @db.VarChar(4)
+  expires_on       DateTime? @db.Date
+  is_default       Boolean   @default(false)
+  is_active        Boolean   @default(true)
+  added_at         DateTime  @default(now()) @db.Timestamptz(6)
+  payment          payment[]
+  app_user         app_user  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rider            rider[]
+  tip              tip[]
+
+  @@index([user_id], map: "idx_pm_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_transaction {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id       String   @db.Uuid
+  gateway_provider String   @db.VarChar(50)
+  gateway_ref      String?  @db.VarChar(255)
+  transaction_type String   @db.VarChar(20)
+  amount           Decimal  @db.Decimal(10, 2)
+  status           String   @db.VarChar(20)
+  raw_response     String?
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+  payment          payment  @relation(fields: [payment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([payment_id], map: "idx_ptx_payment")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rating {
+  id                                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id                            String   @db.Uuid
+  rater_id                           String   @db.Uuid
+  ratee_id                           String   @db.Uuid
+  rater_role                         String   @db.VarChar(10)
+  stars                              Int
+  comment                            String?
+  rated_at                           DateTime @default(now()) @db.Timestamptz(6)
+  app_user_rating_ratee_idToapp_user app_user @relation("rating_ratee_idToapp_user", fields: [ratee_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user_rating_rater_idToapp_user app_user @relation("rating_rater_idToapp_user", fields: [rater_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride                               ride     @relation(fields: [ride_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([ride_id, rater_id])
+  @@index([ratee_id], map: "idx_rating_ratee")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model refund {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  payment_id   String    @db.Uuid
+  admin_id     String?   @db.Uuid
+  amount       Decimal   @db.Decimal(10, 2)
+  reason       String?
+  status       String    @default("requested") @db.VarChar(20)
+  gateway_ref  String?   @db.VarChar(255)
+  requested_at DateTime  @default(now()) @db.Timestamptz(6)
+  refunded_at  DateTime? @db.Timestamptz(6)
+  admin        admin?    @relation(fields: [admin_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  payment      payment   @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ride {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  rider_id            String           @db.Uuid
+  driver_id           String?          @db.Uuid
+  vehicle_id          String?          @db.Uuid
+  city_id             String?          @db.Uuid
+  country_id          String?          @db.Uuid
+  fare_estimate_id    String?          @db.Uuid
+  pickup_address      String
+  dropoff_address     String
+  pickup_lat          Float
+  pickup_lng          Float
+  dropoff_lat         Float
+  dropoff_lng         Float
+  status              String           @default("requested") @db.VarChar(30)
+  distance_km         Decimal?         @db.Decimal(8, 2)
+  duration_seconds    Int?
+  base_fare           Decimal?         @db.Decimal(10, 2)
+  surge_multiplier    Decimal          @default(1.00) @db.Decimal(4, 2)
+  total_fare          Decimal?         @db.Decimal(10, 2)
+  cancellation_reason String?
+  cancelled_by        String?          @db.VarChar(20)
+  scheduled_for       DateTime?        @db.Timestamptz(6)
+  requested_at        DateTime         @default(now()) @db.Timestamptz(6)
+  matched_at          DateTime?        @db.Timestamptz(6)
+  started_at          DateTime?        @db.Timestamptz(6)
+  completed_at        DateTime?        @db.Timestamptz(6)
+  chat_message        chat_message[]
+  payment             payment?
+  rating              rating[]
+  city                city?            @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country             country?         @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver              driver?          @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  fare_estimate       fare_estimate?   @relation(fields: [fare_estimate_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rider               rider            @relation(fields: [rider_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  vehicle             vehicle?         @relation(fields: [vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride_dispatch       ride_dispatch[]
+  ride_stop           ride_stop[]
+  ride_tracking       ride_tracking[]
+  sos_event           sos_event[]
+  support_ticket      support_ticket[]
+  tip                 tip?
+
+  @@index([city_id, status], map: "idx_ride_city_status")
+  @@index([driver_id], map: "idx_ride_driver")
+  @@index([requested_at(sort: Desc)], map: "idx_ride_requested_at")
+  @@index([rider_id], map: "idx_ride_rider")
+  @@index([status], map: "idx_ride_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model ride_dispatch {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id               String    @db.Uuid
+  driver_id             String    @db.Uuid
+  offer_status          String    @default("pending") @db.VarChar(20)
+  offered_at            DateTime  @default(now()) @db.Timestamptz(6)
+  responded_at          DateTime? @db.Timestamptz(6)
+  distance_to_pickup_km Decimal?  @db.Decimal(6, 2)
+  rejection_reason      String?   @db.VarChar(120)
+  driver                driver    @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  ride                  ride      @relation(fields: [ride_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([driver_id], map: "idx_dispatch_driver")
+  @@index([ride_id], map: "idx_dispatch_ride")
+}
+
+model ride_stop {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id     String    @db.Uuid
+  sequence    Int
+  address     String
+  lat         Float
+  lng         Float
+  arrived_at  DateTime? @db.Timestamptz(6)
+  departed_at DateTime? @db.Timestamptz(6)
+  ride        ride      @relation(fields: [ride_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([ride_id, sequence])
+}
+
+model ride_tracking {
+  id         BigInt   @id @default(autoincrement())
+  ride_id    String   @db.Uuid
+  driver_id  String   @db.Uuid
+  city_id    String?  @db.Uuid
+  country_id String?  @db.Uuid
+  lat        Float
+  lng        Float
+  speed      Float?   @db.Real
+  bearing    Float?   @db.Real
+  accuracy   Float?   @db.Real
+  ts         DateTime @default(now()) @db.Timestamptz(6)
+  city       city?    @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country    country? @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver     driver   @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  ride       ride     @relation(fields: [ride_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([driver_id, ts(sort: Desc)], map: "idx_tracking_driver")
+  @@index([ride_id, ts], map: "idx_tracking_ride")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rider {
+  user_id                   String          @id @db.Uuid
+  current_city_id           String?         @db.Uuid
+  current_country_id        String?         @db.Uuid
+  rating_avg                Decimal?        @default(5.00) @db.Decimal(3, 2)
+  total_rides               Int             @default(0)
+  default_payment_method_id String?         @db.Uuid
+  preferred_language        String?         @default("en") @db.VarChar(10)
+  accepts_shared_rides      Boolean         @default(false)
+  fare_estimate             fare_estimate[]
+  ride                      ride[]
+  city                      city?           @relation(fields: [current_city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country                   country?        @relation(fields: [current_country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payment_method            payment_method? @relation(fields: [default_payment_method_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user                  app_user        @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  tip                       tip[]
+
+  @@index([current_city_id], map: "idx_rider_current_city")
+}
+
+model saved_place {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @db.Uuid
+  city_id    String?  @db.Uuid
+  country_id String?  @db.Uuid
+  label      String   @db.VarChar(50)
+  address    String
+  lat        Float
+  lng        Float
+  city       city?    @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country    country? @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user   app_user @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_saved_place_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sos_event {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String    @db.Uuid
+  ride_id       String?   @db.Uuid
+  city_id       String?   @db.Uuid
+  country_id    String?   @db.Uuid
+  lat           Float?
+  lng           Float?
+  dispatched_to String?   @db.VarChar(30)
+  status        String    @default("triggered") @db.VarChar(20)
+  notes         String?
+  triggered_at  DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at   DateTime? @db.Timestamptz(6)
+  city          city?     @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  country       country?  @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride          ride?     @relation(fields: [ride_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user      app_user  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status], map: "idx_sos_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model support_ticket {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id           String    @db.Uuid
+  ride_id           String?   @db.Uuid
+  assigned_admin_id String?   @db.Uuid
+  category          String    @db.VarChar(30)
+  subject           String    @db.VarChar(255)
+  description       String?
+  status            String    @default("open") @db.VarChar(20)
+  priority          String    @default("medium") @db.VarChar(10)
+  resolution_notes  String?
+  opened_at         DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at       DateTime? @db.Timestamptz(6)
+  admin             admin?    @relation(fields: [assigned_admin_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  ride              ride?     @relation(fields: [ride_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  app_user          app_user  @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([assigned_admin_id], map: "idx_ticket_admin")
+  @@index([status], map: "idx_ticket_status")
+  @@index([user_id], map: "idx_ticket_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model tip {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ride_id           String          @unique @db.Uuid
+  rider_id          String          @db.Uuid
+  driver_id         String          @db.Uuid
+  payment_method_id String?         @db.Uuid
+  amount            Decimal         @db.Decimal(10, 2)
+  currency          String          @default("USD") @db.Char(3)
+  status            String          @default("pending") @db.VarChar(20)
+  tipped_at         DateTime        @default(now()) @db.Timestamptz(6)
+  driver            driver          @relation(fields: [driver_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  payment_method    payment_method? @relation(fields: [payment_method_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  ride              ride            @relation(fields: [ride_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rider             rider           @relation(fields: [rider_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vehicle {
+  id                                       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  driver_id                                String               @db.Uuid
+  vehicle_type_id                          String               @db.Uuid
+  city_id                                  String?              @db.Uuid
+  plate                                    String               @unique @db.VarChar(20)
+  make_model                               String               @db.VarChar(120)
+  color                                    String?              @db.VarChar(30)
+  year                                     Int?
+  status                                   String               @default("active") @db.VarChar(30)
+  registered_on                            DateTime?            @db.Date
+  driver_driver_active_vehicle_idTovehicle driver[]             @relation("driver_active_vehicle_idTovehicle")
+  parcel_delivery                          parcel_delivery[]
+  ride                                     ride[]
+  city                                     city?                @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  driver_vehicle_driver_idTodriver         driver               @relation("vehicle_driver_idTodriver", fields: [driver_id], references: [user_id], onDelete: Cascade, onUpdate: NoAction)
+  vehicle_type                             vehicle_type         @relation(fields: [vehicle_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vehicle_inspection                       vehicle_inspection[]
+
+  @@index([city_id], map: "idx_vehicle_city")
+  @@index([driver_id], map: "idx_vehicle_driver")
+  @@index([vehicle_type_id], map: "idx_vehicle_type")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vehicle_inspection {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  vehicle_id      String    @db.Uuid
+  inspector_name  String?   @db.VarChar(120)
+  inspected_on    DateTime  @db.Date
+  next_due_on     DateTime? @db.Date
+  outcome         String    @db.VarChar(20)
+  notes           String?
+  certificate_url String?
+  vehicle         vehicle   @relation(fields: [vehicle_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([vehicle_id], map: "idx_inspection_vehicle")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model vehicle_type {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String          @unique @db.VarChar(50)
+  tier          String          @db.VarChar(20)
+  base_fare     Decimal         @db.Decimal(10, 2)
+  per_km_rate   Decimal         @db.Decimal(10, 2)
+  per_min_rate  Decimal         @db.Decimal(10, 2)
+  min_fare      Decimal         @default(0) @db.Decimal(10, 2)
+  booking_fee   Decimal         @default(0) @db.Decimal(10, 2)
+  capacity      Int
+  is_active     Boolean         @default(true)
+  fare_estimate fare_estimate[]
+  vehicle       vehicle[]
+}
+
+model wallet {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String               @unique @db.Uuid
+  balance            Decimal              @default(0) @db.Decimal(14, 2)
+  currency           String               @default("USD") @db.Char(3)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  app_user           app_user             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  wallet_transaction wallet_transaction[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model wallet_transaction {
+  id            BigInt   @id @default(autoincrement())
+  wallet_id     String   @db.Uuid
+  direction     String   @db.VarChar(10)
+  amount        Decimal  @db.Decimal(14, 2)
+  ref_type      String?  @db.VarChar(50)
+  ref_id        String?  @db.Uuid
+  description   String?
+  balance_after Decimal  @db.Decimal(14, 2)
+  ts            DateTime @default(now()) @db.Timestamptz(6)
+  wallet        wallet   @relation(fields: [wallet_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([wallet_id, ts(sort: Desc)], map: "idx_wallettx_wallet")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model zone {
+  id             String   @id(map: "surge_zone_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  city_id        String?  @db.Uuid
+  country_id     String?  @db.Uuid
+  zone_name      String   @db.VarChar(120)
+  boundary       String
+  effective_from DateTime @db.Timestamptz(6)
+  effective_to   DateTime @db.Timestamptz(6)
+  reason         String?  @db.VarChar(120)
+  zone_type      String   @default("normal") @db.VarChar(20)
+  city           city?    @relation(fields: [city_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "surge_zone_city_id_fkey")
+  country        country? @relation(fields: [country_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "surge_zone_country_id_fkey")
+
+  @@index([city_id, effective_from, effective_to], map: "idx_zone_city_active")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model verification_code {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String    @db.Uuid
+  channel      String    @db.VarChar(10)
+  destination  String    @db.VarChar(255)
+  code_hash    String    @db.VarChar(255)
+  purpose      String    @default("signup") @db.VarChar(30)
+  attempts     Int       @default(0)
+  max_attempts Int       @default(5)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at   DateTime  @db.Timestamptz(6)
+  verified_at  DateTime? @db.Timestamptz(6)
+  app_user     app_user  @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([channel, destination, verified_at], map: "idx_verification_code_lookup")
+  @@index([user_id], map: "idx_verification_code_user")
+}
