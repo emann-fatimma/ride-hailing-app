@@ -1,0 +1,65 @@
+# ============================================================
+# SECRETS — never commit these
+# ============================================================
+backend/.env
+backend/.env.local
+.env
+.env.local
+*.env
+
+# ============================================================
+# Backend (Node.js)
+# ============================================================
+backend/node_modules/
+backend/server.log
+backend/generated/
+node_modules/
+
+# ============================================================
+# Flutter/Dart/Pub related
+# ============================================================
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+mobile/build/
+build/
+coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio build artifacts
+mobile/android/app/debug
+mobile/android/app/profile
+mobile/android/app/release
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/ios/Pods/
+mobile/ios/Flutter/.last_build_id
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+*.iml
+*.ipr
+*.iws
+.idea/
+# .vscode/  -- left commented, VS Code config can be useful to share
+
+# ============================================================
+# OS files
+# ============================================================
+.DS_Store
+Thumbs.db
+*.log
+*.class
+*.pyc
+*.swp
+.svn/
