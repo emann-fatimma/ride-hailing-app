@@ -5,6 +5,7 @@ const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
+const { smsConfigured, emailConfigured, sendSms, sendEmail } = require('./services/notifications');
 
 const app = express();
 const prisma = new PrismaClient();
@@ -89,9 +90,10 @@ function hashOtp(code) {
   return crypto.createHash('sha256').update(code).digest('hex');
 }
 
-// Generates and stores a verification code. No real SMS/email provider is wired up yet, so
-// "delivery" is a server log line — the caller returns the plaintext code in the API response
-// (marked dev_code) so the client can display it until a real provider is configured.
+// Generates and stores a verification code, then tries to deliver it over the real
+// channel (Twilio SMS / Gmail SMTP). If the provider isn't configured (no API keys yet)
+// or delivery fails, falls back to a server log line — the caller then returns the
+// plaintext code in the API response (marked dev_code) so the client can display it.
 async function issueVerificationCode(user, channel) {
   const destination = channel === 'email' ? user.email : user.phone;
   const code = crypto.randomInt(100000, 1000000).toString();
@@ -108,9 +110,28 @@ async function issueVerificationCode(user, channel) {
     }
   });
 
-  console.log(`[DEV OTP] ${channel} code for ${destination}: ${code} (expires ${expiresAt.toISOString()})`);
+  // Dev mode by default: only attempt real delivery once Twilio/Gmail credentials are
+  // set in .env. Until then this always falls through to the console log + dev_code below.
+  let delivered = false;
+  const providerConfigured = channel === 'phone' ? smsConfigured : emailConfigured;
+  if (providerConfigured) {
+    try {
+      if (channel === 'phone') {
+        await sendSms(destination, `Your RideEasy verification code is ${code}. It expires in 10 minutes.`);
+      } else {
+        await sendEmail(destination, 'Your RideEasy verification code', `Your verification code is ${code}. It expires in 10 minutes.`);
+      }
+      delivered = true;
+    } catch (error) {
+      console.warn(`[OTP] Could not deliver ${channel} code to ${destination}: ${error.message}`);
+    }
+  }
 
-  return { code, destination, expiresAt };
+  if (!delivered) {
+    console.log(`[DEV OTP] ${channel} code for ${destination}: ${code} (expires ${expiresAt.toISOString()})`);
+  }
+
+  return { code, destination, expiresAt, delivered };
 }
 
 // ============================================================
@@ -195,15 +216,15 @@ app.post('/api/auth/signup', async (req, res) => {
       return newUser;
     });
 
-    const { code, destination, expiresAt } = await issueVerificationCode(user, channel);
+    const { code, destination, expiresAt, delivered } = await issueVerificationCode(user, channel);
 
     const { password_hash: _, ...safeUser } = user;
     res.status(201).json({
-      message: 'Account created successfully',
+      message: delivered ? 'Account created successfully' : 'Account created successfully (dev mode — no provider configured)',
       user: safeUser,
       verify_channel: channel,
       destination,
-      dev_code: code,
+      dev_code: delivered ? undefined : code,
       expires_at: expiresAt
     });
 
@@ -278,8 +299,14 @@ app.post('/api/auth/send-code', async (req, res) => {
       return res.status(404).json({ error: `No account found for that ${channel}` });
     }
 
-    const { code, expiresAt } = await issueVerificationCode(user, channel);
-    res.json({ message: 'Code sent', dev_code: code, expires_at: expiresAt, channel, destination });
+    const { code, expiresAt, delivered } = await issueVerificationCode(user, channel);
+    res.json({
+      message: delivered ? 'Code sent' : 'Code sent (dev mode — no provider configured)',
+      dev_code: delivered ? undefined : code,
+      expires_at: expiresAt,
+      channel,
+      destination
+    });
   } catch (error) {
     console.error('Send code error:', error);
     res.status(500).json({ error: 'Something went wrong' });
@@ -990,6 +1017,61 @@ app.post('/api/drivers/location', authenticate, async (req, res) => {
     res.json({ message: 'Location updated', tracked_ride_id: activeRide ? activeRide.id : null });
   } catch (error) {
     console.error('Driver location error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/drivers/dispatches
+// Lists this driver's pending ride offers, most recent first
+// ------------------------------------------------------------
+app.get('/api/drivers/dispatches', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can view ride offers' });
+    }
+
+    const dispatches = await prisma.ride_dispatch.findMany({
+      where: { driver_id: driver.user_id, offer_status: 'pending' },
+      orderBy: { offered_at: 'desc' },
+      include: { ride: true }
+    });
+
+    res.json({ dispatches });
+  } catch (error) {
+    console.error('Get dispatches error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// POST /api/rides/:id/decline
+// Driver turns down a dispatched offer without claiming the ride
+// ------------------------------------------------------------
+app.post('/api/rides/:id/decline', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can decline ride offers' });
+    }
+
+    const dispatch = await prisma.ride_dispatch.findFirst({
+      where: { ride_id: req.params.id, driver_id: driver.user_id, offer_status: 'pending' }
+    });
+    if (!dispatch) {
+      return res.status(404).json({ error: 'No pending offer found for this ride' });
+    }
+
+    const { reason } = req.body || {};
+    const updated = await prisma.ride_dispatch.update({
+      where: { id: dispatch.id },
+      data: { offer_status: 'rejected', responded_at: new Date(), rejection_reason: reason || null }
+    });
+
+    res.json({ message: 'Ride declined', dispatch: updated });
+  } catch (error) {
+    console.error('Decline ride error:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 });

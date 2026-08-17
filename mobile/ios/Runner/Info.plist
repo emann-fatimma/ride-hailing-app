@@ -45,5 +45,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RideEasy needs your location to find nearby rides and show your pickup point.</string>
 </dict>
 </plist>

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
+import '../services/auth_state.dart';
 import 'login_screen.dart';
 import 'otp_verify_screen.dart';
+import 'driver_home_screen.dart';
 import '../widgets/country_code_field.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -18,6 +20,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
+  final _licenseNumberController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -25,21 +28,37 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _passwordError;
   String? _confirmError;
   String? _emailError;
+  String? _licenseError;
   String? _generalError;
   String _dialCode = '+92';
   String _verifyChannel = 'phone';
+  String _role = 'rider'; // 'rider' or 'driver'
+  DateTime? _licenseExpiry;
+
+  Future<void> _pickLicenseExpiry() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(now.year + 1, now.month, now.day),
+      firstDate: now,
+      lastDate: DateTime(now.year + 15),
+    );
+    if (picked != null) setState(() => _licenseExpiry = picked);
+  }
 
   void _validateAndSubmit() async {
     setState(() {
       _passwordError = null;
       _confirmError = null;
       _emailError = null;
+      _licenseError = null;
       _generalError = null;
     });
 
     final password = _passwordController.text;
     final confirm = _confirmController.text;
     final email = _emailController.text.trim();
+    final isDriver = _role == 'driver';
 
     bool hasError = false;
     if (password.length < 8) {
@@ -54,15 +73,64 @@ class _SignupScreenState extends State<SignupScreen> {
       setState(() => _generalError = 'Please fill in all fields');
       hasError = true;
     }
-    if (_verifyChannel == 'email' && !email.contains('@')) {
+    if ((isDriver || _verifyChannel == 'email') && !email.contains('@')) {
       setState(() => _emailError = 'Enter a valid email address');
       hasError = true;
+    }
+    if (isDriver) {
+      if (_licenseNumberController.text.trim().isEmpty) {
+        setState(() => _licenseError = 'License number is required');
+        hasError = true;
+      }
+      if (_licenseExpiry == null) {
+        setState(() => _licenseError = 'Select a license expiry date');
+        hasError = true;
+      }
     }
     if (hasError) return;
 
     setState(() => _isLoading = true);
 
     final fullPhone = '$_dialCode${_phoneController.text.trim()}';
+
+    if (isDriver) {
+      final expiry = _licenseExpiry!;
+      final expiryStr = '${expiry.year.toString().padLeft(4, '0')}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}';
+      final result = await ApiService.signupDriver(
+        name: _nameController.text.trim(),
+        phone: fullPhone,
+        email: email,
+        password: password,
+        licenseNumber: _licenseNumberController.text.trim(),
+        licenseExpiry: expiryStr,
+      );
+
+      if (!result['success']) {
+        setState(() {
+          _isLoading = false;
+          _generalError = result['error'];
+        });
+        return;
+      }
+
+      final loginResult = await ApiService.login(phone: fullPhone, password: password);
+      setState(() => _isLoading = false);
+      if (!mounted) return;
+      if (loginResult['success']) {
+        await AuthState.set(loginResult['data']['token'], loginResult['data']['user']);
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const DriverHomeScreen()),
+          (route) => false,
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+        );
+      }
+      return;
+    }
+
     final result = await ApiService.signup(
       name: _nameController.text.trim(),
       phone: fullPhone,
@@ -92,6 +160,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDriver = _role == 'driver';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -108,7 +178,17 @@ class _SignupScreenState extends State<SignupScreen> {
                 style: AppTextStyles.subtitle,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: AppSpacing.xl),
+              const SizedBox(height: AppSpacing.lg),
+
+              // Role toggle
+              Row(
+                children: [
+                  Expanded(child: _buildRoleChip('I\'m a Rider', 'rider')),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(child: _buildRoleChip('I\'m a Driver', 'driver')),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.lg),
 
               // Name field
               _buildLabel('Your Name'),
@@ -138,18 +218,7 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               const SizedBox(height: AppSpacing.md),
 
-              // Verification channel
-              _buildLabel('Verify via'),
-              Row(
-                children: [
-                  Expanded(child: _buildChannelChip('Phone', 'phone')),
-                  const SizedBox(width: AppSpacing.sm),
-                  Expanded(child: _buildChannelChip('Email', 'email')),
-                ],
-              ),
-
-              if (_verifyChannel == 'email') ...[
-                const SizedBox(height: AppSpacing.md),
+              if (isDriver) ...[
                 _buildLabel('Email'),
                 _buildTextField(
                   controller: _emailController,
@@ -165,8 +234,82 @@ class _SignupScreenState extends State<SignupScreen> {
                     child: Text(_emailError!, style: AppTextStyles.errorText),
                   ),
                 ],
+                const SizedBox(height: AppSpacing.md),
+
+                _buildLabel('License Number'),
+                _buildTextField(
+                  controller: _licenseNumberController,
+                  hint: 'Driving license number',
+                  icon: Icons.badge_outlined,
+                  hasError: _licenseError != null,
+                ),
+                const SizedBox(height: AppSpacing.md),
+
+                _buildLabel('License Expiry'),
+                GestureDetector(
+                  onTap: _pickLicenseExpiry,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: _licenseError != null ? AppColors.error : AppColors.border),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_outlined, color: AppColors.textSecondary, size: 20),
+                        const SizedBox(width: AppSpacing.sm),
+                        Text(
+                          _licenseExpiry == null
+                              ? 'Select date'
+                              : '${_licenseExpiry!.year}-${_licenseExpiry!.month.toString().padLeft(2, '0')}-${_licenseExpiry!.day.toString().padLeft(2, '0')}',
+                          style: _licenseExpiry == null
+                              ? const TextStyle(color: AppColors.textSecondary)
+                              : AppTextStyles.body,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_licenseError != null) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(_licenseError!, style: AppTextStyles.errorText),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.md),
+              ] else ...[
+                // Verification channel
+                _buildLabel('Verify via'),
+                Row(
+                  children: [
+                    Expanded(child: _buildChannelChip('Phone', 'phone')),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(child: _buildChannelChip('Email', 'email')),
+                  ],
+                ),
+
+                if (_verifyChannel == 'email') ...[
+                  const SizedBox(height: AppSpacing.md),
+                  _buildLabel('Email'),
+                  _buildTextField(
+                    controller: _emailController,
+                    hint: 'you@example.com',
+                    icon: Icons.email_outlined,
+                    hasError: _emailError != null,
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                  if (_emailError != null) ...[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(_emailError!, style: AppTextStyles.errorText),
+                    ),
+                  ],
+                ],
+                const SizedBox(height: AppSpacing.md),
               ],
-              const SizedBox(height: AppSpacing.md),
 
               // Password field
               _buildLabel('Password'),
@@ -232,7 +375,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
               const SizedBox(height: AppSpacing.xl),
 
-              // Get Started button
+              // Submit button
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -248,7 +391,10 @@ class _SignupScreenState extends State<SignupScreen> {
                           width: 22, height: 22,
                           child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
-                      : const Text('Get Started', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                      : Text(
+                          isDriver ? 'Create Driver Account' : 'Get Started',
+                          style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
                 ),
               ),
               const SizedBox(height: AppSpacing.md),
@@ -268,6 +414,30 @@ class _SignupScreenState extends State<SignupScreen> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoleChip(String label, String value) {
+    final selected = _role == value;
+    return GestureDetector(
+      onTap: () => setState(() => _role = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.white,
+          border: Border.all(color: selected ? AppColors.primary : AppColors.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : AppColors.textPrimary,
+            fontWeight: FontWeight.w600,
+            fontSize: 14,
           ),
         ),
       ),

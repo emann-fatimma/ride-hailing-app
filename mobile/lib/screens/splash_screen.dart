@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
+import '../services/auth_state.dart';
 import 'login_screen.dart';
+import 'home_screen.dart';
+import 'driver_home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,12 +16,23 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    });
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final minSplash = Future.delayed(const Duration(seconds: 1));
+    await AuthState.load();
+    await minSplash;
+    if (!mounted) return;
+    final isDriver = AuthState.user?['role'] == 'driver';
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) {
+          if (!AuthState.isLoggedIn) return const LoginScreen();
+          return isDriver ? const DriverHomeScreen() : const HomeScreen();
+        },
+      ),
+    );
   }
 
   @override

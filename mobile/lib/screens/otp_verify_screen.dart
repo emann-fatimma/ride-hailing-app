@@ -93,7 +93,7 @@ class _OtpVerifyScreenState extends State<OtpVerifyScreen> {
       return;
     }
 
-    AuthState.set(result['data']['token'], result['data']['user']);
+    await AuthState.set(result['data']['token'], result['data']['user']);
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (context) => const HomeScreen()),

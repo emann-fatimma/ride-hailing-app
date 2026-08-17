@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../services/auth_state.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
+import 'driver_home_screen.dart';
 import '../widgets/country_code_field.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -41,10 +42,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = false);
 
     if (result['success']) {
-      AuthState.set(result['data']['token'], result['data']['user']);
+      await AuthState.set(result['data']['token'], result['data']['user']);
       if (!mounted) return;
+      final isDriver = result['data']['user']['role'] == 'driver';
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        MaterialPageRoute(builder: (context) => isDriver ? const DriverHomeScreen() : const HomeScreen()),
         (route) => false,
       );
     } else {
