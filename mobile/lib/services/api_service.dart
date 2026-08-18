@@ -760,4 +760,28 @@ class ApiService {
     }
     return {'success': false, 'error': data['error'] ?? 'Could not submit document'};
   }
+
+  // Address autocomplete. biasLat/biasLng (e.g. the rider's current
+  // location) nudge results toward nearby matches without excluding others.
+  static Future<Map<String, dynamic>> searchAddress({
+    required String query,
+    double? biasLat,
+    double? biasLng,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/geocode/search').replace(queryParameters: {
+      'q': query,
+      if (biasLat != null) 'lat': biasLat.toString(),
+      if (biasLng != null) 'lng': biasLng.toString(),
+    });
+    try {
+      final response = await http.get(uri, headers: _authHeaders).timeout(const Duration(seconds: 8));
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': List<Map<String, dynamic>>.from(data['suggestions'])};
+      }
+      return {'success': false, 'error': data['error'] ?? 'Could not search addresses'};
+    } catch (_) {
+      return {'success': false, 'error': 'Could not search addresses — check your connection'};
+    }
+  }
 }

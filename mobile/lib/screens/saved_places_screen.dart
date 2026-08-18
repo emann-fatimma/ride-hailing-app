@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
-import '../services/location_service.dart';
+import 'location_picker_screen.dart';
 
 class SavedPlacesScreen extends StatefulWidget {
   const SavedPlacesScreen({super.key});
@@ -54,8 +52,15 @@ class _SavedPlacesScreenState extends State<SavedPlacesScreen> {
   }
 
   Future<void> _addPlace() async {
-    final added = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (context) => const _PickPlaceScreen()),
+    final picked = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(builder: (context) => const LocationPickerScreen(title: 'Choose a location')),
+    );
+    if (picked == null || !mounted) return;
+    final added = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) => _LabelPlaceSheet(picked: picked),
     );
     if (added == true) _load();
   }
@@ -157,55 +162,23 @@ class _PlaceCard extends StatelessWidget {
   }
 }
 
-// Full-screen tap-to-pick map, mirroring BookRideScreen's picker, then a label
-// to save it under.
-class _PickPlaceScreen extends StatefulWidget {
-  const _PickPlaceScreen();
+// Bottom sheet shown after picking a location — just the label + save step,
+// since LocationPickerScreen now owns the search/map picking itself.
+class _LabelPlaceSheet extends StatefulWidget {
+  final Map<String, dynamic> picked; // {'lat','lng','address'}
+
+  const _LabelPlaceSheet({required this.picked});
 
   @override
-  State<_PickPlaceScreen> createState() => _PickPlaceScreenState();
+  State<_LabelPlaceSheet> createState() => _LabelPlaceSheetState();
 }
 
-class _PickPlaceScreenState extends State<_PickPlaceScreen> {
-  final MapController _mapController = MapController();
+class _LabelPlaceSheetState extends State<_LabelPlaceSheet> {
   final _labelController = TextEditingController();
-  LatLng? _point;
-  String _address = 'Tap the map to choose a location';
   bool _isSaving = false;
   String? _error;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadCurrentLocation();
-  }
-
-  Future<void> _loadCurrentLocation() async {
-    try {
-      final position = await LocationService.getCurrentPosition();
-      final latLng = LatLng(position.latitude, position.longitude);
-      if (!mounted) return;
-      _mapController.move(latLng, 15);
-    } catch (_) {
-      // Falls back to the default map center — user can still tap to pick.
-    }
-  }
-
-  Future<void> _onMapTap(TapPosition tapPosition, LatLng point) async {
-    setState(() {
-      _point = point;
-      _address = 'Loading address…';
-    });
-    final address = await LocationService.addressFromCoordinates(point.latitude, point.longitude);
-    if (!mounted) return;
-    setState(() => _address = address);
-  }
-
   Future<void> _save() async {
-    if (_point == null) {
-      setState(() => _error = 'Tap the map to choose a location');
-      return;
-    }
     if (_labelController.text.trim().isEmpty) {
       setState(() => _error = 'Give this place a label, like Home or Work');
       return;
@@ -216,9 +189,9 @@ class _PickPlaceScreenState extends State<_PickPlaceScreen> {
     });
     final result = await ApiService.addSavedPlace(
       label: _labelController.text.trim(),
-      address: _address,
-      lat: _point!.latitude,
-      lng: _point!.longitude,
+      address: widget.picked['address'] as String,
+      lat: widget.picked['lat'] as double,
+      lng: widget.picked['lng'] as double,
     );
     if (!mounted) return;
     setState(() => _isSaving = false);
@@ -231,87 +204,47 @@ class _PickPlaceScreenState extends State<_PickPlaceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.lg,
+        AppSpacing.lg,
+        MediaQuery.of(context).viewInsets.bottom + AppSpacing.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: Stack(
-              children: [
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: const LatLng(24.8607, 67.0011),
-                    initialZoom: 13,
-                    onTap: _onMapTap,
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.example.mobile',
-                    ),
-                    if (_point != null)
-                      MarkerLayer(markers: [
-                        Marker(
-                          point: _point!,
-                          width: 40,
-                          height: 40,
-                          child: const Icon(Icons.location_on, color: AppColors.primary, size: 36),
-                        ),
-                      ]),
-                    RichAttributionWidget(attributions: [TextSourceAttribution('OpenStreetMap contributors')]),
-                  ],
-                ),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    child: CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-                        onPressed: () => Navigator.of(context).pop(),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          Text('Save this place', style: AppTextStyles.heading1.copyWith(fontSize: 18)),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            widget.picked['address'] as String,
+            style: AppTextStyles.body,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
-          Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, -2))],
-            ),
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(_address, style: AppTextStyles.body, maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: AppSpacing.sm),
-                TextField(
-                  controller: _labelController,
-                  decoration: const InputDecoration(labelText: 'Label (e.g. Home, Work)', border: OutlineInputBorder()),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: AppSpacing.sm),
-                  Text(_error!, style: AppTextStyles.errorText),
-                ],
-                const SizedBox(height: AppSpacing.md),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _isSaving ? null : _save,
-                    child: _isSaving
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Save Place', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-              ],
+          const SizedBox(height: AppSpacing.md),
+          TextField(
+            controller: _labelController,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Label (e.g. Home, Work)', border: OutlineInputBorder()),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(_error!, style: AppTextStyles.errorText),
+          ],
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: _isSaving ? null : _save,
+              child: _isSaving
+                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Save Place', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ),
         ],

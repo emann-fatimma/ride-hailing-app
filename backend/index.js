@@ -1986,6 +1986,90 @@ app.delete('/api/saved-places/:id', authenticate, async (req, res) => {
 });
 
 // ============================================================
+// GEOCODING
+// ============================================================
+
+// Nominatim's public endpoint asks callers to stay at/under 1 request per
+// second and to identify the app via User-Agent — this queue enforces that
+// across every user of this server, and the cache below cuts down repeat
+// lookups for the same query. Swap the fetch call for a paid provider
+// (Google Places/Mapbox) behind this same route if usage ever needs to
+// scale past what Nominatim's fair-use policy allows.
+const NOMINATIM_MIN_INTERVAL_MS = 1100;
+let nominatimQueueTail = Promise.resolve();
+let nominatimLastCallAt = 0;
+
+function queueNominatimCall(task) {
+  const run = nominatimQueueTail.then(async () => {
+    const wait = Math.max(0, nominatimLastCallAt + NOMINATIM_MIN_INTERVAL_MS - Date.now());
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+    nominatimLastCallAt = Date.now();
+    return task();
+  });
+  // Keep the queue alive even if this call fails, so later searches still run.
+  nominatimQueueTail = run.catch(() => {});
+  return run;
+}
+
+const GEOCODE_CACHE_TTL_MS = 5 * 60 * 1000;
+const geocodeCache = new Map();
+
+// ------------------------------------------------------------
+// GET /api/geocode/search?q=...&lat=&lng=
+// Forward-geocodes free text into address suggestions for autocomplete,
+// optionally biased toward a lat/lng (e.g. the rider's current location).
+// ------------------------------------------------------------
+app.get('/api/geocode/search', authenticate, async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (q.length < 3) {
+      return res.status(400).json({ error: 'q must be at least 3 characters' });
+    }
+
+    const lat = req.query.lat != null ? Number(req.query.lat) : null;
+    const lng = req.query.lng != null ? Number(req.query.lng) : null;
+    const hasBias = lat != null && lng != null && !Number.isNaN(lat) && !Number.isNaN(lng);
+
+    const cacheKey = `${q.toLowerCase()}|${hasBias ? lat.toFixed(2) : ''}|${hasBias ? lng.toFixed(2) : ''}`;
+    const cached = geocodeCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < GEOCODE_CACHE_TTL_MS) {
+      return res.json({ suggestions: cached.suggestions });
+    }
+
+    const params = new URLSearchParams({ q, format: 'jsonv2', addressdetails: '1', limit: '8', 'accept-language': 'en' });
+    if (hasBias) {
+      const span = 0.5; // roughly a ~50km box around the bias point — biases, doesn't restrict
+      params.set('viewbox', `${lng - span},${lat + span},${lng + span},${lat - span}`);
+      params.set('bounded', '0');
+    }
+
+    const suggestions = await queueNominatimCall(async () => {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: { 'User-Agent': 'RideEasy/1.0 (ride-hailing app; contact: support@rideeasy.app)' }
+      });
+      if (!response.ok) {
+        throw new Error(`Nominatim responded with ${response.status}`);
+      }
+      const results = await response.json();
+      return results.map((r) => ({
+        display_name: r.display_name,
+        lat: Number(r.lat),
+        lng: Number(r.lon),
+        type: r.type || null
+      }));
+    });
+
+    if (geocodeCache.size > 500) geocodeCache.clear();
+    geocodeCache.set(cacheKey, { suggestions, at: Date.now() });
+
+    res.json({ suggestions });
+  } catch (error) {
+    console.error('Geocode search error:', error);
+    res.status(502).json({ error: 'Address search is temporarily unavailable' });
+  }
+});
+
+// ============================================================
 // SUPPORT TICKETS
 // ============================================================
 

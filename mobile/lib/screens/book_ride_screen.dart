@@ -4,9 +4,8 @@ import 'package:latlong2/latlong.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import 'location_picker_screen.dart';
 import 'ride_status_screen.dart';
-
-enum _PickMode { pickup, dropoff }
 
 class BookRideScreen extends StatefulWidget {
   const BookRideScreen({super.key});
@@ -21,14 +20,11 @@ class _BookRideScreenState extends State<BookRideScreen> {
   LatLng? _pickup;
   LatLng? _dropoff;
   String _pickupAddress = 'Locating you…';
-  String _dropoffAddress = 'Tap the map to set your dropoff';
-  _PickMode _mode = _PickMode.dropoff;
+  String _dropoffAddress = 'Where to?';
 
   List<Map<String, dynamic>> _vehicleTypes = [];
   String? _selectedVehicleTypeId;
   bool _loadingVehicleTypes = true;
-
-  List<Map<String, dynamic>> _savedPlaces = [];
 
   Map<String, dynamic>? _estimate;
   bool _isEstimating = false;
@@ -40,30 +36,44 @@ class _BookRideScreenState extends State<BookRideScreen> {
     super.initState();
     _loadCurrentLocation();
     _loadVehicleTypes();
-    _loadSavedPlaces();
   }
 
-  Future<void> _loadSavedPlaces() async {
-    final result = await ApiService.getSavedPlaces();
-    if (!mounted) return;
-    if (result['success']) {
-      setState(() => _savedPlaces = List<Map<String, dynamic>>.from(result['data']));
-    }
-  }
-
-  void _selectSavedPlace(Map<String, dynamic> place) {
-    final point = LatLng((place['lat'] as num).toDouble(), (place['lng'] as num).toDouble());
+  Future<void> _pickPickup() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (context) => LocationPickerScreen(
+          title: 'Set pickup location',
+          initialPoint: _pickup,
+          initialAddress: _pickup != null ? _pickupAddress : null,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
     setState(() {
+      _pickup = LatLng(result['lat'] as double, result['lng'] as double);
+      _pickupAddress = result['address'] as String;
       _estimate = null;
-      if (_mode == _PickMode.pickup) {
-        _pickup = point;
-        _pickupAddress = place['address'] as String;
-      } else {
-        _dropoff = point;
-        _dropoffAddress = place['address'] as String;
-      }
     });
-    _mapController.move(point, 15);
+    _mapController.move(_pickup!, 15);
+  }
+
+  Future<void> _pickDropoff() async {
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (context) => LocationPickerScreen(
+          title: 'Set dropoff location',
+          initialPoint: _dropoff,
+          initialAddress: _dropoff != null ? _dropoffAddress : null,
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _dropoff = LatLng(result['lat'] as double, result['lng'] as double);
+      _dropoffAddress = result['address'] as String;
+      _estimate = null;
+    });
+    _mapController.move(_dropoff!, 15);
   }
 
   Future<void> _loadCurrentLocation() async {
@@ -96,28 +106,6 @@ class _BookRideScreenState extends State<BookRideScreen> {
     } else {
       setState(() => _loadingVehicleTypes = false);
     }
-  }
-
-  Future<void> _onMapTap(TapPosition tapPosition, LatLng point) async {
-    setState(() {
-      _estimate = null;
-      if (_mode == _PickMode.pickup) {
-        _pickup = point;
-        _pickupAddress = 'Loading address…';
-      } else {
-        _dropoff = point;
-        _dropoffAddress = 'Loading address…';
-      }
-    });
-    final address = await LocationService.addressFromCoordinates(point.latitude, point.longitude);
-    if (!mounted) return;
-    setState(() {
-      if (_mode == _PickMode.pickup) {
-        _pickupAddress = address;
-      } else {
-        _dropoffAddress = address;
-      }
-    });
   }
 
   Future<void> _getEstimate() async {
@@ -204,7 +192,6 @@ class _BookRideScreenState extends State<BookRideScreen> {
                   options: MapOptions(
                     initialCenter: const LatLng(24.8607, 67.0011), // Karachi — replaced once GPS resolves
                     initialZoom: 12,
-                    onTap: _onMapTap,
                   ),
                   children: [
                     TileLayer(
@@ -249,8 +236,7 @@ class _BookRideScreenState extends State<BookRideScreen> {
                     color: AppColors.success,
                     label: 'Pickup',
                     address: _pickupAddress,
-                    selected: _mode == _PickMode.pickup,
-                    onTap: () => setState(() => _mode = _PickMode.pickup),
+                    onTap: _pickPickup,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   _buildAddressRow(
@@ -258,35 +244,8 @@ class _BookRideScreenState extends State<BookRideScreen> {
                     color: AppColors.error,
                     label: 'Dropoff',
                     address: _dropoffAddress,
-                    selected: _mode == _PickMode.dropoff,
-                    onTap: () => setState(() => _mode = _PickMode.dropoff),
+                    onTap: _pickDropoff,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tap the map to set the ${_mode == _PickMode.pickup ? 'pickup' : 'dropoff'} point',
-                    style: AppTextStyles.helper,
-                  ),
-                  if (_savedPlaces.isNotEmpty) ...[
-                    const SizedBox(height: AppSpacing.sm),
-                    SizedBox(
-                      height: 34,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _savedPlaces.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
-                        itemBuilder: (context, index) {
-                          final place = _savedPlaces[index];
-                          return ActionChip(
-                            avatar: const Icon(Icons.bookmark, size: 16, color: AppColors.primary),
-                            label: Text(place['label'] as String),
-                            backgroundColor: AppColors.background,
-                            side: const BorderSide(color: AppColors.border),
-                            onPressed: () => _selectSavedPlace(place),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: AppSpacing.md),
 
                   Text('Vehicle', style: AppTextStyles.label),
@@ -417,7 +376,6 @@ class _BookRideScreenState extends State<BookRideScreen> {
     required Color color,
     required String label,
     required String address,
-    required bool selected,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -425,7 +383,7 @@ class _BookRideScreenState extends State<BookRideScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 1.5 : 1),
+          border: Border.all(color: AppColors.border),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -441,6 +399,7 @@ class _BookRideScreenState extends State<BookRideScreen> {
                 ],
               ),
             ),
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
       ),
