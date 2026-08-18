@@ -28,6 +28,8 @@ class _BookRideScreenState extends State<BookRideScreen> {
   String? _selectedVehicleTypeId;
   bool _loadingVehicleTypes = true;
 
+  List<Map<String, dynamic>> _savedPlaces = [];
+
   Map<String, dynamic>? _estimate;
   bool _isEstimating = false;
   bool _isRequesting = false;
@@ -38,6 +40,30 @@ class _BookRideScreenState extends State<BookRideScreen> {
     super.initState();
     _loadCurrentLocation();
     _loadVehicleTypes();
+    _loadSavedPlaces();
+  }
+
+  Future<void> _loadSavedPlaces() async {
+    final result = await ApiService.getSavedPlaces();
+    if (!mounted) return;
+    if (result['success']) {
+      setState(() => _savedPlaces = List<Map<String, dynamic>>.from(result['data']));
+    }
+  }
+
+  void _selectSavedPlace(Map<String, dynamic> place) {
+    final point = LatLng((place['lat'] as num).toDouble(), (place['lng'] as num).toDouble());
+    setState(() {
+      _estimate = null;
+      if (_mode == _PickMode.pickup) {
+        _pickup = point;
+        _pickupAddress = place['address'] as String;
+      } else {
+        _dropoff = point;
+        _dropoffAddress = place['address'] as String;
+      }
+    });
+    _mapController.move(point, 15);
   }
 
   Future<void> _loadCurrentLocation() async {
@@ -240,6 +266,27 @@ class _BookRideScreenState extends State<BookRideScreen> {
                     'Tap the map to set the ${_mode == _PickMode.pickup ? 'pickup' : 'dropoff'} point',
                     style: AppTextStyles.helper,
                   ),
+                  if (_savedPlaces.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.sm),
+                    SizedBox(
+                      height: 34,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _savedPlaces.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.sm),
+                        itemBuilder: (context, index) {
+                          final place = _savedPlaces[index];
+                          return ActionChip(
+                            avatar: const Icon(Icons.bookmark, size: 16, color: AppColors.primary),
+                            label: Text(place['label'] as String),
+                            backgroundColor: AppColors.background,
+                            side: const BorderSide(color: AppColors.border),
+                            onPressed: () => _selectSavedPlace(place),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: AppSpacing.md),
 
                   Text('Vehicle', style: AppTextStyles.label),

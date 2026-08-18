@@ -6,7 +6,7 @@ import '../services/auth_state.dart';
 import '../services/location_service.dart';
 import 'book_ride_screen.dart';
 import 'ride_history_screen.dart';
-import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -34,15 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       // Home screen still works without a location fix — booking asks again.
     }
-  }
-
-  void _logout() async {
-    await AuthState.clear();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false,
-    );
   }
 
   @override
@@ -97,9 +88,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   CircleAvatar(
                     backgroundColor: Colors.white,
                     child: IconButton(
-                      icon: const Icon(Icons.logout, color: AppColors.textPrimary),
-                      tooltip: 'Log Out',
-                      onPressed: _logout,
+                      icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
+                      tooltip: 'Profile',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                      ),
                     ),
                   ),
                 ],

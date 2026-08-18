@@ -381,6 +381,100 @@ app.post('/api/auth/verify-code', async (req, res) => {
 });
 
 // ------------------------------------------------------------
+// POST /api/auth/forgot-password
+// Issues a reset code if the phone/email matches an account. Always
+// responds the same way either way, so this can't be used to probe
+// which phones/emails have accounts.
+// ------------------------------------------------------------
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { phone, email } = req.body || {};
+    if (!phone && !email) {
+      return res.status(400).json({ error: 'phone or email is required' });
+    }
+
+    const user = await prisma.app_user.findUnique({ where: phone ? { phone } : { email } });
+
+    const genericResponse = { message: 'If an account exists, a reset code has been sent.' };
+    if (!user) {
+      return res.json(genericResponse);
+    }
+
+    const channel = phone ? 'phone' : 'email';
+    const destination = phone ? user.phone : user.email;
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await prisma.password_reset.create({
+      data: { user_id: user.id, token_hash: hashOtp(code), expires_at: expiresAt }
+    });
+
+    let delivered = false;
+    const providerConfigured = channel === 'phone' ? smsConfigured : emailConfigured;
+    if (providerConfigured) {
+      try {
+        if (channel === 'phone') {
+          await sendSms(destination, `Your RideEasy password reset code is ${code}. It expires in 15 minutes.`);
+        } else {
+          await sendEmail(destination, 'Reset your RideEasy password', `Your password reset code is ${code}. It expires in 15 minutes.`);
+        }
+        delivered = true;
+      } catch (error) {
+        console.warn(`[RESET] Could not deliver ${channel} code to ${destination}: ${error.message}`);
+      }
+    }
+
+    if (!delivered) {
+      console.log(`[DEV RESET CODE] ${channel} code for ${destination}: ${code} (expires ${expiresAt.toISOString()})`);
+    }
+
+    res.json({ ...genericResponse, ...(delivered ? {} : { dev_code: code }) });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// POST /api/auth/reset-password
+// ------------------------------------------------------------
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { phone, email, code, new_password } = req.body || {};
+    if ((!phone && !email) || !code || !new_password) {
+      return res.status(400).json({ error: 'phone or email, code, and new_password are required' });
+    }
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    const user = await prisma.app_user.findUnique({ where: phone ? { phone } : { email } });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    const record = await prisma.password_reset.findFirst({
+      where: { user_id: user.id, used_at: null, token_hash: hashOtp(code), expires_at: { gt: new Date() } },
+      orderBy: { created_at: 'desc' }
+    });
+    if (!record) {
+      return res.status(400).json({ error: 'Invalid or expired code' });
+    }
+
+    const password_hash = await bcrypt.hash(new_password, 12);
+    await prisma.$transaction([
+      prisma.app_user.update({ where: { id: user.id }, data: { password_hash } }),
+      prisma.password_reset.update({ where: { id: record.id }, data: { used_at: new Date() } })
+    ]);
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
 // GET /api/countries  (public — no login needed)
 // Returns countries the platform operates in, for phone dial-code pickers etc.
 // ------------------------------------------------------------
@@ -460,6 +554,63 @@ app.get('/api/me', authenticate, async (req, res) => {
     res.json({ user: safeUser });
   } catch (error) {
     console.error('Get me error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// PUT /api/me
+// Updates editable profile fields for the logged-in user
+// ------------------------------------------------------------
+app.put('/api/me', authenticate, async (req, res) => {
+  try {
+    const { name, profile_photo_url, date_of_birth, gender } = req.body || {};
+
+    const data = {};
+    if (name !== undefined) data.name = name;
+    if (profile_photo_url !== undefined) data.profile_photo_url = profile_photo_url;
+    if (date_of_birth !== undefined) data.date_of_birth = date_of_birth ? new Date(date_of_birth) : null;
+    if (gender !== undefined) data.gender = gender;
+
+    const user = await prisma.app_user.update({
+      where: { id: req.user.userId },
+      data,
+      include: { rider: true, driver: true, admin: true, wallet: true, city: true }
+    });
+
+    const { password_hash: _, ...safeUser } = user;
+    res.json({ message: 'Profile updated', user: safeUser });
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// POST /api/auth/change-password
+// ------------------------------------------------------------
+app.post('/api/auth/change-password', authenticate, async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body || {};
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'current_password and new_password are required' });
+    }
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const user = await prisma.app_user.findUnique({ where: { id: req.user.userId } });
+    const passwordValid = await bcrypt.compare(current_password, user.password_hash);
+    if (!passwordValid) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    const password_hash = await bcrypt.hash(new_password, 12);
+    await prisma.app_user.update({ where: { id: user.id }, data: { password_hash } });
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 });
@@ -949,6 +1100,145 @@ app.post('/api/auth/signup/driver', async (req, res) => {
   }
 });
 
+// ============================================================
+// VEHICLES
+// ============================================================
+
+// ------------------------------------------------------------
+// POST /api/vehicles
+// Driver registers a vehicle. The first vehicle a driver adds
+// automatically becomes their active one.
+// ------------------------------------------------------------
+app.post('/api/vehicles', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can register vehicles' });
+    }
+
+    const { vehicle_type_id, plate, make_model, color, year } = req.body;
+    if (!vehicle_type_id || !plate || !make_model) {
+      return res.status(400).json({ error: 'Missing required fields: vehicle_type_id, plate, make_model' });
+    }
+
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        driver_id: driver.user_id,
+        vehicle_type_id,
+        city_id: driver.current_city_id || null,
+        plate,
+        make_model,
+        color: color || null,
+        year: year || null,
+        registered_on: new Date()
+      }
+    });
+
+    if (!driver.active_vehicle_id) {
+      await prisma.driver.update({
+        where: { user_id: driver.user_id },
+        data: { active_vehicle_id: vehicle.id }
+      });
+    }
+
+    res.status(201).json({ message: 'Vehicle registered', vehicle });
+  } catch (error) {
+    if (error.code === 'P2002') {
+      return res.status(409).json({ error: 'A vehicle with this plate is already registered' });
+    }
+    console.error('Register vehicle error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/vehicles/my
+// Lists the logged-in driver's vehicles
+// ------------------------------------------------------------
+app.get('/api/vehicles/my', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can view vehicles' });
+    }
+
+    const vehicles = await prisma.vehicle.findMany({
+      where: { driver_id: driver.user_id },
+      include: { vehicle_type: true },
+      orderBy: { registered_on: 'desc' }
+    });
+
+    res.json({
+      vehicles: vehicles.map((v) => ({ ...v, is_active: v.id === driver.active_vehicle_id }))
+    });
+  } catch (error) {
+    console.error('List vehicles error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// PUT /api/vehicles/:id
+// Edit a vehicle's details (ownership required)
+// ------------------------------------------------------------
+app.put('/api/vehicles/:id', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can edit vehicles' });
+    }
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: req.params.id } });
+    if (!vehicle || vehicle.driver_id !== driver.user_id) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    const { make_model, color, year, status } = req.body;
+    const updated = await prisma.vehicle.update({
+      where: { id: vehicle.id },
+      data: {
+        make_model: make_model ?? vehicle.make_model,
+        color: color ?? vehicle.color,
+        year: year ?? vehicle.year,
+        status: status ?? vehicle.status
+      }
+    });
+
+    res.json({ message: 'Vehicle updated', vehicle: updated });
+  } catch (error) {
+    console.error('Update vehicle error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// POST /api/vehicles/:id/activate
+// Switches which of the driver's vehicles is their active one
+// ------------------------------------------------------------
+app.post('/api/vehicles/:id/activate', authenticate, async (req, res) => {
+  try {
+    const driver = await prisma.driver.findUnique({ where: { user_id: req.user.userId } });
+    if (!driver) {
+      return res.status(403).json({ error: 'Only drivers can activate vehicles' });
+    }
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { id: req.params.id } });
+    if (!vehicle || vehicle.driver_id !== driver.user_id) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    await prisma.driver.update({
+      where: { user_id: driver.user_id },
+      data: { active_vehicle_id: vehicle.id }
+    });
+
+    res.json({ message: 'Active vehicle updated', vehicle });
+  } catch (error) {
+    console.error('Activate vehicle error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
 // ------------------------------------------------------------
 // POST /api/drivers/online
 // Toggles the logged-in driver's online/offline status
@@ -1334,6 +1624,137 @@ app.post('/api/sos/:id/resolve', authenticate, async (req, res) => {
     res.json({ message: 'SOS event updated', sos_event: updated });
   } catch (error) {
     console.error('Resolve SOS error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ============================================================
+// EMERGENCY CONTACTS
+// ============================================================
+
+// ------------------------------------------------------------
+// POST /api/emergency-contacts
+// ------------------------------------------------------------
+app.post('/api/emergency-contacts', authenticate, async (req, res) => {
+  try {
+    const { name, phone, relation, priority } = req.body || {};
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Missing required fields: name, phone' });
+    }
+
+    const contact = await prisma.emergency_contact.create({
+      data: {
+        user_id: req.user.userId,
+        name,
+        phone,
+        relation: relation || null,
+        priority: priority != null ? Number(priority) : 1
+      }
+    });
+
+    res.status(201).json({ message: 'Emergency contact added', contact });
+  } catch (error) {
+    console.error('Add emergency contact error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/emergency-contacts
+// ------------------------------------------------------------
+app.get('/api/emergency-contacts', authenticate, async (req, res) => {
+  try {
+    const contacts = await prisma.emergency_contact.findMany({
+      where: { user_id: req.user.userId },
+      orderBy: { priority: 'asc' }
+    });
+    res.json({ contacts });
+  } catch (error) {
+    console.error('List emergency contacts error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// DELETE /api/emergency-contacts/:id
+// ------------------------------------------------------------
+app.delete('/api/emergency-contacts/:id', authenticate, async (req, res) => {
+  try {
+    const contact = await prisma.emergency_contact.findUnique({ where: { id: req.params.id } });
+    if (!contact || contact.user_id !== req.user.userId) {
+      return res.status(404).json({ error: 'Emergency contact not found' });
+    }
+
+    await prisma.emergency_contact.delete({ where: { id: contact.id } });
+    res.json({ message: 'Emergency contact removed' });
+  } catch (error) {
+    console.error('Delete emergency contact error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ============================================================
+// SAVED PLACES
+// ============================================================
+
+// ------------------------------------------------------------
+// POST /api/saved-places
+// ------------------------------------------------------------
+app.post('/api/saved-places', authenticate, async (req, res) => {
+  try {
+    const { label, address, lat, lng, city_id, country_id } = req.body || {};
+    if (!label || !address || lat == null || lng == null) {
+      return res.status(400).json({ error: 'Missing required fields: label, address, lat, lng' });
+    }
+
+    const place = await prisma.saved_place.create({
+      data: {
+        user_id: req.user.userId,
+        label,
+        address,
+        lat,
+        lng,
+        city_id: city_id || null,
+        country_id: country_id || null
+      }
+    });
+
+    res.status(201).json({ message: 'Place saved', place });
+  } catch (error) {
+    console.error('Add saved place error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/saved-places
+// ------------------------------------------------------------
+app.get('/api/saved-places', authenticate, async (req, res) => {
+  try {
+    const places = await prisma.saved_place.findMany({
+      where: { user_id: req.user.userId }
+    });
+    res.json({ places });
+  } catch (error) {
+    console.error('List saved places error:', error);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
+
+// ------------------------------------------------------------
+// DELETE /api/saved-places/:id
+// ------------------------------------------------------------
+app.delete('/api/saved-places/:id', authenticate, async (req, res) => {
+  try {
+    const place = await prisma.saved_place.findUnique({ where: { id: req.params.id } });
+    if (!place || place.user_id !== req.user.userId) {
+      return res.status(404).json({ error: 'Saved place not found' });
+    }
+
+    await prisma.saved_place.delete({ where: { id: place.id } });
+    res.json({ message: 'Saved place removed' });
+  } catch (error) {
+    console.error('Delete saved place error:', error);
     res.status(500).json({ error: 'Something went wrong' });
   }
 });

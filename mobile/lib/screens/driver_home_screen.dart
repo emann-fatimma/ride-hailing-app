@@ -4,10 +4,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
-import '../services/auth_state.dart';
 import '../services/location_service.dart';
 import 'driver_active_ride_screen.dart';
-import 'login_screen.dart';
+import 'profile_screen.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -165,15 +164,6 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     });
   }
 
-  void _logout() async {
-    await AuthState.clear();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final name = _driverProfile?['name'] as String? ?? 'Driver';
@@ -238,9 +228,11 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                   CircleAvatar(
                     backgroundColor: Colors.white,
                     child: IconButton(
-                      icon: const Icon(Icons.logout, color: AppColors.textPrimary),
-                      tooltip: 'Log Out',
-                      onPressed: _logout,
+                      icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
+                      tooltip: 'Profile',
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                      ),
                     ),
                   ),
                 ],

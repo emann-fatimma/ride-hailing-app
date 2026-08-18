@@ -120,6 +120,168 @@ class ApiService {
     return {'success': false, 'error': data['error'] ?? 'Could not load profile'};
   }
 
+  static Future<Map<String, dynamic>> updateProfile({
+    String? name,
+    String? profilePhotoUrl,
+    String? dateOfBirth, // 'YYYY-MM-DD'
+    String? gender,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/me'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (profilePhotoUrl != null) 'profile_photo_url': profilePhotoUrl,
+        if (dateOfBirth != null) 'date_of_birth': dateOfBirth,
+        if (gender != null) 'gender': gender,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': data['user']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not update profile'};
+  }
+
+  static Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/change-password'),
+      headers: _authHeaders,
+      body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not change password'};
+  }
+
+  static Future<Map<String, dynamic>> forgotPassword({String? phone, String? email}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/forgot-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({if (phone != null) 'phone': phone, if (email != null) 'email': email}),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'devCode': data['dev_code']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not request reset code'};
+  }
+
+  static Future<Map<String, dynamic>> resetPassword({
+    String? phone,
+    String? email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/auth/reset-password'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (phone != null) 'phone': phone,
+        if (email != null) 'email': email,
+        'code': code,
+        'new_password': newPassword,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not reset password'};
+  }
+
+  // ------------------------------------------------------------
+  // Saved places
+  // ------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> getSavedPlaces() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/saved-places'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['places'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load saved places'};
+  }
+
+  static Future<Map<String, dynamic>> addSavedPlace({
+    required String label,
+    required String address,
+    required double lat,
+    required double lng,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/saved-places'),
+      headers: _authHeaders,
+      body: jsonEncode({'label': label, 'address': address, 'lat': lat, 'lng': lng}),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['place']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not save place'};
+  }
+
+  static Future<Map<String, dynamic>> deleteSavedPlace(String placeId) async {
+    final response = await http.delete(Uri.parse('$baseUrl/api/saved-places/$placeId'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not remove saved place'};
+  }
+
+  // ------------------------------------------------------------
+  // Vehicles
+  // ------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> registerVehicle({
+    required String vehicleTypeId,
+    required String plate,
+    required String makeModel,
+    String? color,
+    int? year,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/vehicles'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'vehicle_type_id': vehicleTypeId,
+        'plate': plate,
+        'make_model': makeModel,
+        if (color != null && color.isNotEmpty) 'color': color,
+        if (year != null) 'year': year,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['vehicle']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not register vehicle'};
+  }
+
+  static Future<Map<String, dynamic>> getMyVehicles() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/vehicles/my'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['vehicles'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load vehicles'};
+  }
+
+  static Future<Map<String, dynamic>> activateVehicle(String vehicleId) async {
+    final response = await http.post(Uri.parse('$baseUrl/api/vehicles/$vehicleId/activate'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': data['vehicle']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not activate vehicle'};
+  }
+
   // ------------------------------------------------------------
   // Driver signup
   // ------------------------------------------------------------
@@ -268,6 +430,28 @@ class ApiService {
     return {'success': false, 'error': data['error'] ?? 'Could not submit rating'};
   }
 
+  static Future<Map<String, dynamic>> getRideMessages(String rideId) async {
+    final response = await http.get(Uri.parse('$baseUrl/api/rides/$rideId/messages'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['messages'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load messages'};
+  }
+
+  static Future<Map<String, dynamic>> sendRideMessage(String rideId, String message) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/rides/$rideId/messages'),
+      headers: _authHeaders,
+      body: jsonEncode({'message': message}),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['message']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not send message'};
+  }
+
   // ------------------------------------------------------------
   // Driver
   // ------------------------------------------------------------
@@ -341,5 +525,66 @@ class ApiService {
       return {'success': true, 'data': data['ride']};
     }
     return {'success': false, 'error': data['error'] ?? 'Could not complete ride'};
+  }
+
+  // ------------------------------------------------------------
+  // Safety
+  // ------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> triggerSos({String? rideId, double? lat, double? lng, String? notes}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/sos'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        if (rideId != null) 'ride_id': rideId,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['sos_event']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not trigger SOS'};
+  }
+
+  static Future<Map<String, dynamic>> getEmergencyContacts() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/emergency-contacts'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['contacts'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load emergency contacts'};
+  }
+
+  static Future<Map<String, dynamic>> addEmergencyContact({
+    required String name,
+    required String phone,
+    String? relation,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/emergency-contacts'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'name': name,
+        'phone': phone,
+        if (relation != null && relation.isNotEmpty) 'relation': relation,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['contact']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not add emergency contact'};
+  }
+
+  static Future<Map<String, dynamic>> deleteEmergencyContact(String contactId) async {
+    final response = await http.delete(Uri.parse('$baseUrl/api/emergency-contacts/$contactId'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not remove emergency contact'};
   }
 }

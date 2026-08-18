@@ -5,6 +5,8 @@ import 'package:latlong2/latlong.dart';
 import '../theme.dart';
 import '../services/api_service.dart';
 import 'driver_home_screen.dart';
+import 'ride_chat_screen.dart';
+import '../widgets/sos_button.dart';
 
 const _statusLabels = {
   'matched': 'Heading to pickup',
@@ -108,41 +110,71 @@ class _DriverActiveRideScreenState extends State<DriverActiveRideScreen> {
             : Column(
                 children: [
                   Expanded(
-                    child: FlutterMap(
-                      options: MapOptions(
-                        initialCenter: LatLng(
-                          (ride['pickup_lat'] as num).toDouble(),
-                          (ride['pickup_lng'] as num).toDouble(),
-                        ),
-                        initialZoom: 13,
-                      ),
+                    child: Stack(
                       children: [
-                        TileLayer(
-                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.example.mobile',
-                        ),
-                        MarkerLayer(markers: [
-                          Marker(
-                            point: LatLng(
+                        FlutterMap(
+                          options: MapOptions(
+                            initialCenter: LatLng(
                               (ride['pickup_lat'] as num).toDouble(),
                               (ride['pickup_lng'] as num).toDouble(),
                             ),
-                            width: 40,
-                            height: 40,
-                            child: const Icon(Icons.my_location, color: AppColors.success, size: 32),
+                            initialZoom: 13,
                           ),
-                          Marker(
-                            point: LatLng(
-                              (ride['dropoff_lat'] as num).toDouble(),
-                              (ride['dropoff_lng'] as num).toDouble(),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.example.mobile',
                             ),
-                            width: 40,
-                            height: 40,
-                            child: const Icon(Icons.location_on, color: AppColors.error, size: 36),
+                            MarkerLayer(markers: [
+                              Marker(
+                                point: LatLng(
+                                  (ride['pickup_lat'] as num).toDouble(),
+                                  (ride['pickup_lng'] as num).toDouble(),
+                                ),
+                                width: 40,
+                                height: 40,
+                                child: const Icon(Icons.my_location, color: AppColors.success, size: 32),
+                              ),
+                              Marker(
+                                point: LatLng(
+                                  (ride['dropoff_lat'] as num).toDouble(),
+                                  (ride['dropoff_lng'] as num).toDouble(),
+                                ),
+                                width: 40,
+                                height: 40,
+                                child: const Icon(Icons.location_on, color: AppColors.error, size: 36),
+                              ),
+                            ]),
+                            RichAttributionWidget(
+                              attributions: [TextSourceAttribution('OpenStreetMap contributors')],
+                            ),
+                          ],
+                        ),
+                        Positioned(
+                          top: AppSpacing.md,
+                          right: AppSpacing.md,
+                          child: SafeArea(
+                            child: Column(
+                              children: [
+                                SosButton(
+                                  rideId: widget.rideId,
+                                  lat: (ride['pickup_lat'] as num?)?.toDouble(),
+                                  lng: (ride['pickup_lng'] as num?)?.toDouble(),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                CircleAvatar(
+                                  backgroundColor: Colors.white,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.chat_bubble_outline, color: AppColors.textPrimary),
+                                    tooltip: 'Chat',
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (context) => RideChatScreen(rideId: widget.rideId)),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ]),
-                        RichAttributionWidget(
-                          attributions: [TextSourceAttribution('OpenStreetMap contributors')],
                         ),
                       ],
                     ),

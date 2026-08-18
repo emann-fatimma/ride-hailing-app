@@ -5,6 +5,7 @@ import '../services/auth_state.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'driver_home_screen.dart';
+import 'forgot_password_screen.dart';
 import '../widgets/country_code_field.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -104,6 +105,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   icon: Icon(_obscurePassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
                       color: AppColors.textSecondary),
                   onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
+
+              const SizedBox(height: AppSpacing.sm),
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                  ),
+                  child: const Text('Forgot password?', style: AppTextStyles.link),
                 ),
               ),
 
