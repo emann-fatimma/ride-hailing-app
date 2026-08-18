@@ -18,6 +18,7 @@ class ApiService {
     required String phone,
     required String password,
     required String verifyChannel, // 'phone' or 'email'
+    required List<Map<String, String>> emergencyContacts, // exactly 2: {name, phone, relation?}
     String? email, // required (real address) when verifyChannel is 'email'
   }) async {
     final effectiveEmail = email ?? '${phone.replaceAll('+', '')}@rideeasy.temp';
@@ -32,6 +33,7 @@ class ApiService {
         'password': password,
         'role': 'rider',
         'verify_channel': verifyChannel,
+        'emergency_contacts': emergencyContacts,
       }),
     );
 
@@ -586,5 +588,176 @@ class ApiService {
       return {'success': true};
     }
     return {'success': false, 'error': data['error'] ?? 'Could not remove emergency contact'};
+  }
+
+  // ------------------------------------------------------------
+  // Notifications
+  // ------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> getNotifications() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/notifications'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {
+        'success': true,
+        'notifications': List<Map<String, dynamic>>.from(data['notifications']),
+        'unreadCount': data['unread_count'] as int,
+      };
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load notifications'};
+  }
+
+  static Future<Map<String, dynamic>> markNotificationRead(String notificationId) async {
+    final response = await http.post(Uri.parse('$baseUrl/api/notifications/$notificationId/read'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not update notification'};
+  }
+
+  static Future<Map<String, dynamic>> getNotificationPreferences() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/notification-preferences'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['preferences'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load notification preferences'};
+  }
+
+  static Future<Map<String, dynamic>> updateNotificationPreferences(List<Map<String, dynamic>> preferences) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/api/notification-preferences'),
+      headers: _authHeaders,
+      body: jsonEncode({'preferences': preferences}),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['preferences'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not update notification preferences'};
+  }
+
+  // ------------------------------------------------------------
+  // Driver earnings: bank accounts, payouts, incentives, KYC documents
+  // ------------------------------------------------------------
+
+  static Future<Map<String, dynamic>> getBankAccounts() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/driver/bank-accounts'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['bank_accounts'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load bank accounts'};
+  }
+
+  static Future<Map<String, dynamic>> addBankAccount({
+    required String accountHolderName,
+    required String bankName,
+    required String accountNumber,
+    required String countryId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/driver/bank-accounts'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'account_holder_name': accountHolderName,
+        'bank_name': bankName,
+        'account_number': accountNumber,
+        'country_id': countryId,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['bank_account']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not add bank account'};
+  }
+
+  static Future<Map<String, dynamic>> setDefaultBankAccount(String bankAccountId) async {
+    final response = await http.post(Uri.parse('$baseUrl/api/driver/bank-accounts/$bankAccountId/default'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not set default bank account'};
+  }
+
+  static Future<Map<String, dynamic>> deleteBankAccount(String bankAccountId) async {
+    final response = await http.delete(Uri.parse('$baseUrl/api/driver/bank-accounts/$bankAccountId'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not remove bank account'};
+  }
+
+  static Future<Map<String, dynamic>> getPayouts() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/driver/payouts'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['payouts'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load payouts'};
+  }
+
+  static Future<Map<String, dynamic>> requestPayout({String? bankAccountId, double? amount}) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/driver/payouts'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        if (bankAccountId != null) 'bank_account_id': bankAccountId,
+        if (amount != null) 'amount': amount,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['payout']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not request payout'};
+  }
+
+  static Future<Map<String, dynamic>> getIncentives() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/driver/incentives'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {'success': true, 'data': List<Map<String, dynamic>>.from(data['incentives'])};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load incentives'};
+  }
+
+  static Future<Map<String, dynamic>> getDriverDocuments() async {
+    final response = await http.get(Uri.parse('$baseUrl/api/driver/documents'), headers: _authHeaders);
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 200) {
+      return {
+        'success': true,
+        'documents': List<Map<String, dynamic>>.from(data['documents']),
+        'requiredDocTypes': List<String>.from(data['required_doc_types']),
+        'kycStatus': data['kyc_status'] as String?,
+      };
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not load documents'};
+  }
+
+  static Future<Map<String, dynamic>> submitDriverDocument({
+    required String docType,
+    required String url,
+    String? expiresAt, // 'YYYY-MM-DD'
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/driver/documents'),
+      headers: _authHeaders,
+      body: jsonEncode({
+        'doc_type': docType,
+        'url': url,
+        if (expiresAt != null && expiresAt.isNotEmpty) 'expires_at': expiresAt,
+      }),
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode == 201) {
+      return {'success': true, 'data': data['document']};
+    }
+    return {'success': false, 'error': data['error'] ?? 'Could not submit document'};
   }
 }

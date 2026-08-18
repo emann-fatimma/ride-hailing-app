@@ -22,6 +22,13 @@ class _SignupScreenState extends State<SignupScreen> {
   final _confirmController = TextEditingController();
   final _licenseNumberController = TextEditingController();
 
+  final _ec1NameController = TextEditingController();
+  final _ec1PhoneController = TextEditingController();
+  final _ec1RelationController = TextEditingController();
+  final _ec2NameController = TextEditingController();
+  final _ec2PhoneController = TextEditingController();
+  final _ec2RelationController = TextEditingController();
+
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
   bool _isLoading = false;
@@ -29,6 +36,7 @@ class _SignupScreenState extends State<SignupScreen> {
   String? _confirmError;
   String? _emailError;
   String? _licenseError;
+  String? _emergencyContactsError;
   String? _generalError;
   String _dialCode = '+92';
   String _verifyChannel = 'phone';
@@ -52,6 +60,7 @@ class _SignupScreenState extends State<SignupScreen> {
       _confirmError = null;
       _emailError = null;
       _licenseError = null;
+      _emergencyContactsError = null;
       _generalError = null;
     });
 
@@ -84,6 +93,14 @@ class _SignupScreenState extends State<SignupScreen> {
       }
       if (_licenseExpiry == null) {
         setState(() => _licenseError = 'Select a license expiry date');
+        hasError = true;
+      }
+    } else {
+      if (_ec1NameController.text.trim().isEmpty ||
+          _ec1PhoneController.text.trim().isEmpty ||
+          _ec2NameController.text.trim().isEmpty ||
+          _ec2PhoneController.text.trim().isEmpty) {
+        setState(() => _emergencyContactsError = 'Both emergency contacts are required');
         hasError = true;
       }
     }
@@ -137,6 +154,18 @@ class _SignupScreenState extends State<SignupScreen> {
       password: password,
       verifyChannel: _verifyChannel,
       email: _verifyChannel == 'email' ? email : null,
+      emergencyContacts: [
+        {
+          'name': _ec1NameController.text.trim(),
+          'phone': _ec1PhoneController.text.trim(),
+          'relation': _ec1RelationController.text.trim(),
+        },
+        {
+          'name': _ec2NameController.text.trim(),
+          'phone': _ec2PhoneController.text.trim(),
+          'relation': _ec2RelationController.text.trim(),
+        },
+      ],
     );
 
     setState(() => _isLoading = false);
@@ -309,6 +338,37 @@ class _SignupScreenState extends State<SignupScreen> {
                   ],
                 ],
                 const SizedBox(height: AppSpacing.md),
+
+                // Emergency contacts — required so the SOS button has someone to alert
+                _buildLabel('Emergency Contacts'),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: AppSpacing.sm),
+                  child: Text(
+                    "We'll text these two people (and our safety team) if you ever press the SOS button during a ride.",
+                    style: AppTextStyles.helper,
+                  ),
+                ),
+                _buildEmergencyContactFields(
+                  label: 'Contact 1',
+                  nameController: _ec1NameController,
+                  phoneController: _ec1PhoneController,
+                  relationController: _ec1RelationController,
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                _buildEmergencyContactFields(
+                  label: 'Contact 2',
+                  nameController: _ec2NameController,
+                  phoneController: _ec2PhoneController,
+                  relationController: _ec2RelationController,
+                ),
+                if (_emergencyContactsError != null) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(_emergencyContactsError!, style: AppTextStyles.errorText),
+                  ),
+                ],
+                const SizedBox(height: AppSpacing.md),
               ],
 
               // Password field
@@ -464,6 +524,38 @@ class _SignupScreenState extends State<SignupScreen> {
             fontSize: 14,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmergencyContactFields({
+    required String label,
+    required TextEditingController nameController,
+    required TextEditingController phoneController,
+    required TextEditingController relationController,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(label, style: AppTextStyles.label),
+          const SizedBox(height: AppSpacing.sm),
+          _buildTextField(controller: nameController, hint: 'Name', icon: Icons.person_outline),
+          const SizedBox(height: AppSpacing.sm),
+          _buildTextField(
+            controller: phoneController,
+            hint: 'Phone Number',
+            icon: Icons.phone_outlined,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _buildTextField(controller: relationController, hint: 'Relation (optional)', icon: Icons.people_outline),
+        ],
       ),
     );
   }

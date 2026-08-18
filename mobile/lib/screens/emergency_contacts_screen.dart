@@ -85,8 +85,8 @@ class _EmergencyContactsScreenState extends State<EmergencyContactsScreen> {
                 padding: const EdgeInsets.all(AppSpacing.md),
                 children: [
                   const Text(
-                    "These contacts aren't notified automatically yet — they're who our safety team "
-                    "reaches out to if you trigger an SOS.",
+                    "These are the people we text — along with our safety team — the moment you press "
+                    "the SOS button during a ride.",
                     style: AppTextStyles.helper,
                   ),
                   const SizedBox(height: AppSpacing.md),

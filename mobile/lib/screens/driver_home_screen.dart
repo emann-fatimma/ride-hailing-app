@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../services/location_service.dart';
 import 'driver_active_ride_screen.dart';
 import 'profile_screen.dart';
+import '../widgets/notification_bell.dart';
 
 class DriverHomeScreen extends StatefulWidget {
   const DriverHomeScreen({super.key});
@@ -225,15 +226,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ],
                     ),
                   ),
-                  CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
-                      tooltip: 'Profile',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                  Row(
+                    children: [
+                      const NotificationBell(),
+                      const SizedBox(width: AppSpacing.sm),
+                      CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: IconButton(
+                          icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
+                          tooltip: 'Profile',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),

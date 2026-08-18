@@ -7,6 +7,7 @@ import '../services/location_service.dart';
 import 'book_ride_screen.dart';
 import 'ride_history_screen.dart';
 import 'profile_screen.dart';
+import '../widgets/notification_bell.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -85,15 +86,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                   ),
-                  CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
-                      tooltip: 'Profile',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                  Row(
+                    children: [
+                      const NotificationBell(),
+                      const SizedBox(width: AppSpacing.sm),
+                      CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: IconButton(
+                          icon: const Icon(Icons.person_outline, color: AppColors.textPrimary),
+                          tooltip: 'Profile',
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),

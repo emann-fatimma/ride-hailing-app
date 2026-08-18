@@ -3,9 +3,11 @@ import '../theme.dart';
 import '../services/api_service.dart';
 import '../services/auth_state.dart';
 import 'driver_vehicle_screen.dart';
+import 'driver_earnings_screen.dart';
 import 'emergency_contacts_screen.dart';
 import 'saved_places_screen.dart';
 import 'change_password_screen.dart';
+import 'notification_preferences_screen.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -113,12 +115,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                if (isDriver)
+                if (isDriver) ...[
                   _MenuTile(
                     icon: Icons.directions_car_outlined,
                     label: 'My Vehicles',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const DriverVehicleScreen())),
                   ),
+                  _MenuTile(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'Earnings & Documents',
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const DriverEarningsScreen())),
+                  ),
+                ],
                 _MenuTile(
                   icon: Icons.contact_emergency_outlined,
                   label: 'Emergency Contacts',
@@ -130,6 +138,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     label: 'Saved Places',
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const SavedPlacesScreen())),
                   ),
+                _MenuTile(
+                  icon: Icons.notifications_none,
+                  label: 'Notification Settings',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => const NotificationPreferencesScreen())),
+                ),
                 _MenuTile(
                   icon: Icons.lock_outline,
                   label: 'Change Password',
